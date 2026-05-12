@@ -1,0 +1,15 @@
+# render.yaml — Deploy to Render.com (free tier)
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: vehicle-tracker
+    env: node
+    region: singapore   # closest to India
+    plan: free
+    buildCommand: cd webapp && npm install
+    startCommand: cd webapp && node server.js
+    envVars:
+      - key: PORT
+        value: 3000
+    healthCheckPath: /api/status

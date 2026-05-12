@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vehicle Tracker — Live Dashboard</title>
+
+  <!-- Mapbox GL JS -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.js"></script>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── RESET & BASE ─────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0c10;
+      --panel:     #10141c;
+      --border:    #1e2535;
+      --accent:    #00e5ff;
+      --accent2:   #ff3d71;
+      --green:     #00e096;
+      --yellow:    #ffaa00;
+      --text:      #e2e8f0;
+      --muted:     #4a5568;
+      --font-mono: 'Space Mono', monospace;
+      --font-ui:   'Syne', sans-serif;
+    }
+
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font-ui); }
+
+    /* ── LAYOUT ───────────────────────────────── */
+    #app { display: grid; grid-template-columns: 340px 1fr; grid-template-rows: 56px 1fr; height: 100vh; }
+
+    /* ── HEADER ───────────────────────────────── */
+    #header {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      z-index: 10;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.4; transform: scale(0.7); }
+    }
+    .logo-text { font-size: 15px; font-weight: 800; letter-spacing: 0.08em; color: var(--text); }
+    .logo-text span { color: var(--accent); }
+    .header-meta { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+    #ws-status { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; }
+    .ws-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background 0.4s; }
+    .ws-dot.connected    { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .ws-dot.disconnected { background: var(--accent2); }
+
+    /* ── SIDEBAR ──────────────────────────────── */
+    #sidebar {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    .section-label {
+      padding: 14px 16px 8px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.15em;
+      color: var(--muted); text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── STAT CARDS ───────────────────────────── */
+    #stats-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 1px; background: var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .stat-card {
+      background: var(--panel);
+      padding: 14px 16px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .stat-label { font-size: 9px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+    .stat-value {
+      font-family: var(--font-mono); font-size: 20px; font-weight: 700;
+      color: var(--accent); line-height: 1;
+      transition: color 0.3s;
+    }
+    .stat-value.alert { color: var(--accent2) !important; }
+    .stat-value.ok    { color: var(--green) !important; }
+    .stat-sub { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+
+    /* ── GEOFENCE BANNER ──────────────────────── */
+    #geofence-banner {
+      margin: 12px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      background: rgba(0,224,150,0.08);
+      border: 1px solid rgba(0,224,150,0.25);
+      font-family: var(--font-mono); font-size: 11px;
+      color: var(--green);
+      display: flex; align-items: center; gap: 8px;
+      transition: all 0.4s;
+    }
+    #geofence-banner.alert {
+      background: rgba(255,61,113,0.1);
+      border-color: rgba(255,61,113,0.3);
+      color: var(--accent2);
+      animation: shake 0.4s ease;
+    }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      25%      { transform: translateX(-4px); }
+      75%      { transform: translateX(4px); }
+    }
+    .fence-icon { font-size: 14px; }
+
+    /* ── COORDINATES ──────────────────────────── */
+    #coords-box {
+      margin: 0 12px 12px;
+      padding: 12px 14px;
+      background: rgba(0,229,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .coord-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+    .coord-key { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; }
+    .coord-val { font-family: var(--font-mono); font-size: 12px; color: var(--text); }
+
+    /* ── HISTORY LIST ─────────────────────────── */
+    .section-label.history { display: flex; justify-content: space-between; align-items: center; }
+    #history-count { font-size: 10px; font-weight: 400; color: var(--accent); font-family: var(--font-mono); }
+    #history-list { flex: 1; overflow-y: auto; }
+    #history-list::-webkit-scrollbar { width: 3px; }
+    #history-list::-webkit-scrollbar-track { background: transparent; }
+    #history-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .history-item {
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(30,37,53,0.6);
+      cursor: pointer;
+      transition: background 0.15s;
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 4px;
+    }
+    .history-item:hover { background: rgba(0,229,255,0.04); }
+    .history-item.active { background: rgba(0,229,255,0.08); border-left: 2px solid var(--accent); }
+    .hi-coords { font-family: var(--font-mono); font-size: 11px; color: var(--text); }
+    .hi-time   { font-family: var(--font-mono); font-size: 9px; color: var(--muted); text-align: right; }
+    .hi-speed  { font-size: 9px; color: var(--accent); }
+
+    /* ── RELOCATE BUTTON ──────────────────────── */
+    #btn-relocate {
+      margin: 12px;
+      padding: 10px;
+      background: transparent;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      color: var(--accent);
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: all 0.2s;
+    }
+    #btn-relocate:hover { background: rgba(0,229,255,0.1); }
+
+    /* ── MAP ──────────────────────────────────── */
+    #map { grid-column: 2; grid-row: 2; width: 100%; height: 100%; }
+
+    /* ── MAP OVERLAYS ─────────────────────────── */
+    #map-badge {
+      position: absolute; bottom: 30px; right: 16px;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px;
+      font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+      z-index: 5; pointer-events: none;
+      line-height: 1.8;
+    }
+    #map-badge span { color: var(--text); }
+
+    /* ── TOAST ────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px);
+      background: var(--accent2); color: #fff;
+      padding: 10px 20px; border-radius: 6px;
+      font-family: var(--font-mono); font-size: 12px;
+      z-index: 999; transition: transform 0.3s ease;
+      pointer-events: none;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── NO DATA OVERLAY ──────────────────────── */
+    #no-data {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; z-index: 20;
+      background: rgba(10,12,16,0.85);
+      backdrop-filter: blur(4px);
+    }
+    #no-data.hidden { display: none; }
+    .no-data-icon { font-size: 40px; opacity: 0.4; }
+    .no-data-text { font-family: var(--font-mono); font-size: 13px; color: var(--muted); text-align: center; }
+    .spinner {
+      width: 32px; height: 32px; border-radius: 50%;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <header id="header">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      <div class="logo-text">VEHICLE<span>TRACK</span></div>
+    </div>
+    <div class="header-meta" id="last-update-time">Waiting for data...</div>
+    <div id="ws-status">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-label">CONNECTING</span>
+    </div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="section-label">Live Telemetry</div>
+
+    <div id="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Speed</div>
+        <div class="stat-value" id="stat-speed">—</div>
+        <div class="stat-sub">km/h</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Satellites</div>
+        <div class="stat-value" id="stat-sats">—</div>
+        <div class="stat-sub">GPS fix</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Distance</div>
+        <div class="stat-value" id="stat-dist">—</div>
+        <div class="stat-sub">m from base</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Points</div>
+        <div class="stat-value" id="stat-points">0</div>
+        <div class="stat-sub">logged</div>
+      </div>
+    </div>
+
+    <div id="geofence-banner">
+      <span class="fence-icon">◎</span>
+      <span id="geofence-text">Waiting for GPS...</span>
+    </div>
+
+    <div id="coords-box">
+      <div class="coord-row">
+        <span class="coord-key">LATITUDE</span>
+        <span class="coord-val" id="coord-lat">—</span>
+      </div>
+      <div class="coord-row">
+        <span class="coord-key">LONGITUDE</span>
+        <span class="coord-val" id="coord-lng">—</span>
+      </div>
+      <div class="coord-row">
+        <span class="coord-key">DEVICE</span>
+        <span class="coord-val" id="coord-device">—</span>
+      </div>
+    </div>
+
+    <div class="section-label history">
+      Location History
+      <span id="history-count">0 pts</span>
+    </div>
+
+    <div id="history-list"></div>
+
+    <button id="btn-relocate" onclick="relocate()">⊕ Re-centre Map</button>
+  </aside>
+
+  <!-- MAP -->
+  <div id="map">
+    <div id="no-data">
+      <div class="spinner"></div>
+      <div class="no-data-text">Connecting to tracker...<br>Waiting for first GPS fix</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- MAP BADGE -->
+<div id="map-badge">
+  LAT <span id="badge-lat">—</span><br>
+  LNG <span id="badge-lng">—</span>
+</div>
+
+<!-- GEOFENCE TOAST -->
+<div id="toast">⚠ GEOFENCE BREACH DETECTED</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIG  ← UPDATE THESE
+// ─────────────────────────────────────────────
+const MAPBOX_TOKEN  = 'YOUR_MAPBOX_TOKEN';   // replace
+const WS_URL        = `ws://${location.host}`; // auto-detects host
+const TRAIL_MAX     = 200;                    // max trail dots on map
+
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+let map, markerEl, marker, trailCoords = [];
+let mapReady = false, ws;
+let activeHistoryIdx = -1;
+
+// ─────────────────────────────────────────────
+//  MAPBOX INIT
+// ─────────────────────────────────────────────
+mapboxgl.accessToken = MAPBOX_TOKEN;
+
+map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/dark-v11',
+  center: [74.857, 32.726],
+  zoom: 13,
+  attributionControl: false,
+});
+
+map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right');
+map.addControl(new mapboxgl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+
+// Custom marker
+markerEl = document.createElement('div');
+markerEl.innerHTML = `
+  <div style="
+    width:18px;height:18px;border-radius:50%;
+    background:#00e5ff;box-shadow:0 0 0 3px rgba(0,229,255,0.3),0 0 20px rgba(0,229,255,0.6);
+    border:2px solid #fff;position:relative;
+  ">
+    <div style="
+      position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+      width:6px;height:6px;background:#fff;border-radius:50%;
+    "></div>
+  </div>`;
+
+marker = new mapboxgl.Marker({ element: markerEl, anchor: 'center' });
+
+map.on('load', () => {
+  mapReady = true;
+
+  // Trail source
+  map.addSource('trail', {
+    type: 'geojson',
+    data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } }
+  });
+  map.addLayer({
+    id: 'trail-line',
+    type: 'line',
+    source: 'trail',
+    paint: {
+      'line-color': '#00e5ff',
+      'line-width': 2,
+      'line-opacity': 0.5,
+      'line-dasharray': [2, 3],
+    }
+  });
+
+  // Geofence circle (GeoJSON)
+  map.addSource('geofence', { type: 'geojson', data: buildCircle(32.7266, 74.8570, 500) });
+  map.addLayer({ id: 'geofence-fill', type: 'fill', source: 'geofence',
+    paint: { 'fill-color': '#00e096', 'fill-opacity': 0.06 } });
+  map.addLayer({ id: 'geofence-border', type: 'line', source: 'geofence',
+    paint: { 'line-color': '#00e096', 'line-width': 1.5, 'line-dasharray': [4,3], 'line-opacity': 0.5 } });
+});
+
+// Build GeoJSON circle
+function buildCircle(lat, lng, radiusM, steps = 64) {
+  const coords = [], R = 6371000;
+  for (let i = 0; i <= steps; i++) {
+    const angle = (i / steps) * 2 * Math.PI;
+    const dLat  = (radiusM / R) * (180 / Math.PI);
+    const dLng  = dLat / Math.cos(lat * Math.PI / 180);
+    coords.push([lng + dLng * Math.sin(angle), lat + dLat * Math.cos(angle)]);
+  }
+  return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] } };
+}
+
+// ─────────────────────────────────────────────
+//  UPDATE MAP
+// ─────────────────────────────────────────────
+function updateMap(data) {
+  if (!mapReady) return;
+  const { lat, lng } = data;
+
+  marker.setLngLat([lng, lat]).addTo(map);
+
+  trailCoords.push([lng, lat]);
+  if (trailCoords.length > TRAIL_MAX) trailCoords.shift();
+  map.getSource('trail').setData({
+    type: 'Feature', geometry: { type: 'LineString', coordinates: trailCoords }
+  });
+}
+
+function relocate() {
+  if (!marker.getLngLat) return;
+  const ll = marker.getLngLat();
+  if (ll) map.flyTo({ center: [ll.lng, ll.lat], zoom: 15, speed: 1.2 });
+}
+
+// ─────────────────────────────────────────────
+//  UPDATE UI
+// ─────────────────────────────────────────────
+function updateUI(data) {
+  const { lat, lng, speed_kmh, satellites, geofence_ok, distance_m, device, ts } = data;
+
+  document.getElementById('stat-speed').textContent = speed_kmh?.toFixed(1) ?? '0.0';
+  document.getElementById('stat-sats').textContent  = satellites ?? '—';
+  document.getElementById('stat-dist').textContent  = distance_m ?? '—';
+  document.getElementById('coord-lat').textContent  = lat.toFixed(6);
+  document.getElementById('coord-lng').textContent  = lng.toFixed(6);
+  document.getElementById('coord-device').textContent = device ?? '—';
+  document.getElementById('badge-lat').textContent  = lat.toFixed(5);
+  document.getElementById('badge-lng').textContent  = lng.toFixed(5);
+  document.getElementById('last-update-time').textContent =
+    'Last update: ' + new Date(ts).toLocaleTimeString();
+
+  // Geofence banner
+  const banner = document.getElementById('geofence-banner');
+  const ftext  = document.getElementById('geofence-text');
+  if (geofence_ok) {
+    banner.classList.remove('alert');
+    ftext.textContent = `Inside geofence — ${distance_m}m from base`;
+  } else {
+    banner.classList.add('alert');
+    ftext.textContent = `⚠ OUTSIDE GEOFENCE — ${distance_m}m from base`;
+    showToast();
+  }
+}
+
+let toastTimer;
+function showToast() {
+  const t = document.getElementById('toast');
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+// ─────────────────────────────────────────────
+//  HISTORY PANEL
+// ─────────────────────────────────────────────
+function addHistoryItem(data, idx) {
+  const list = document.getElementById('history-list');
+  const item = document.createElement('div');
+  item.className = 'history-item';
+  item.dataset.idx = idx;
+  const time = new Date(data.ts).toLocaleTimeString();
+  item.innerHTML = `
+    <div>
+      <div class="hi-coords">${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}</div>
+      <div class="hi-speed">${(data.speed_kmh ?? 0).toFixed(1)} km/h · ${data.satellites ?? '?'} sats</div>
+    </div>
+    <div class="hi-time">${time}</div>`;
+  item.onclick = () => {
+    document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+    map.flyTo({ center: [data.lng, data.lat], zoom: 15, speed: 1.5 });
+  };
+  list.prepend(item); // newest at top
+}
+
+function buildHistory(history) {
+  const list = document.getElementById('history-list');
+  list.innerHTML = '';
+  history.forEach((d, i) => addHistoryItem(d, i));
+  document.getElementById('history-count').textContent = history.length + ' pts';
+  document.getElementById('stat-points').textContent   = history.length;
+  // rebuild trail
+  trailCoords = history.map(d => [d.lng, d.lat]);
+  if (mapReady && trailCoords.length > 0) {
+    map.getSource('trail')?.setData({
+      type: 'Feature', geometry: { type: 'LineString', coordinates: trailCoords }
+    });
+  }
+}
+
+// ─────────────────────────────────────────────
+//  WEBSOCKET
+// ─────────────────────────────────────────────
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    document.getElementById('ws-dot').className   = 'ws-dot connected';
+    document.getElementById('ws-label').textContent = 'LIVE';
+  };
+
+  ws.onclose = () => {
+    document.getElementById('ws-dot').className   = 'ws-dot disconnected';
+    document.getElementById('ws-label').textContent = 'OFFLINE';
+    setTimeout(connectWS, 3000); // auto-reconnect
+  };
+
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'init') {
+      // Initial load with history
+      buildHistory(msg.history || []);
+      if (msg.latest) {
+        updateUI(msg.latest);
+        updateMap(msg.latest);
+        document.getElementById('no-data').classList.add('hidden');
+        map.flyTo({ center: [msg.latest.lng, msg.latest.lat], zoom: 14 });
+      }
+    }
+
+    if (msg.type === 'location') {
+      const data = msg.data;
+      document.getElementById('no-data').classList.add('hidden');
+      updateUI(data);
+      updateMap(data);
+      addHistoryItem(data, Date.now());
+
+      const count = parseInt(document.getElementById('stat-points').textContent) + 1;
+      document.getElementById('stat-points').textContent = count;
+      document.getElementById('history-count').textContent = count + ' pts';
+    }
+  };
+}
+
+// Start
+connectWS();
+</script>
+</body>
+</html>
