@@ -544,7 +544,7 @@ real-time-vehicle-tracking-system/
 │
 ├── render.yaml                   # Render.com one-click deploy config
 ├── .gitignore                    # Excludes node_modules, .env, tracker.db
-├── SETUP_GUIDE.md                # Detailed step-by-step setup instructions
+├── Setup_Guide.md                # Detailed step-by-step setup instructions
 └── README.md                     # This file
 ```
 

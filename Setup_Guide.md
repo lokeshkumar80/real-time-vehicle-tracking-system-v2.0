@@ -265,7 +265,7 @@ vehicle-tracker/
 │   ├── server.js             ← Node.js backend (MQTT bridge + REST API)
 │   └── package.json
 ├── render.yaml               ← One-click Render.com deploy config
-└── SETUP_GUIDE.md            ← This file
+└── Setup_Guide.md            ← This file
 ```
 
 ---
